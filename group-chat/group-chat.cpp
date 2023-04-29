@@ -48,11 +48,33 @@ public:
     std::string getName() override { return userName; }
 };
 
+class MessageCommand {
+public:
+    virtual ~MessageCommand() {}
+    virtual void execute() = 0;
+    virtual std::string getMessage() = 0;
+};
+
+class SendMessageCommand : public MessageCommand {
+    ChatGroup *chatGroup;
+    std::string message;
+public:
+    SendMessageCommand(ChatGroup *group, std::string msg) :
+        chatGroup(group), message(msg) {
+    }
+    std::string getMessage() override {
+        return message;
+    }
+    void execute() override {
+        chatGroup->publish(message);
+    }
+};
+
 class Handler {
 public:
     virtual ~Handler() {}
     virtual Handler *setNext(Handler *nextValidator) = 0;
-    virtual std::string handle(ChatGroup *group, std::string) = 0;
+    virtual std::string handle(MessageCommand *command) = 0;
 };
 
 class BaseHandler: public Handler {
@@ -64,9 +86,9 @@ public:
         next = nextValidator;
         return nextValidator;
     }
-    virtual std::string handle(ChatGroup *group, std::string testString) override {
+    virtual std::string handle(MessageCommand *command) override {
         if (this->next) {
-            return this->next->handle(group, testString);
+            return this->next->handle(command);
         }
         return "Success!";
     }
@@ -75,12 +97,12 @@ public:
 class NotEmptyValidator: public BaseHandler {
 public:
     NotEmptyValidator() {}
-    std::string handle(ChatGroup *group, std::string testString) {
+    std::string handle(MessageCommand *command) {
         puts("Checking if empty...");
-        if (testString.empty()) {
+        if (command->getMessage().empty()) {
             return "Please enter a value";
         }
-        return BaseHandler::handle(group, testString);
+        return BaseHandler::handle(command);
     }
 };
 
@@ -89,20 +111,20 @@ class LengthValidator: public BaseHandler {
 public:
     LengthValidator(int minLength) : minLength(minLength) {}
 
-    std::string handle(ChatGroup *group, std::string testString) override {
+    std::string handle(MessageCommand *command) override {
         puts("Checking string length...");
-        if (testString.length() < minLength) {
+        if (command->getMessage().length() < minLength) {
             return "Please enter a value longer than " +
                 std::to_string(minLength);
         }
-        return BaseHandler::handle(group, testString);
+        return BaseHandler::handle(command);
     }
 };
 
 class PostMessageHandler : public BaseHandler {
 public:
-    std::string handle(ChatGroup *group, std::string msg) {
-        group->publish(msg);
+    std::string handle(MessageCommand *command) {
+        command->execute();
         return "Message sent!";
     }
 };
@@ -131,12 +153,26 @@ int main (int argc, char *argv[]) {
         ->setNext(new LengthValidator(3))
         ->setNext(new PostMessageHandler);
 
+    SendMessageCommand *empty_msg_cmd =
+        new SendMessageCommand(group_reading, "");
+    SendMessageCommand *short_msg_cmd =
+        new SendMessageCommand(group_reading, "Y");
+    SendMessageCommand *msg_cooking_cmd =
+        new SendMessageCommand(group_cooking, "Hi there! in cooking group");
+    SendMessageCommand *msg_gardening_cmd =
+        new SendMessageCommand(group_gardening, "Hello everyone! in gardening group");
+
     std::cout << "Sending empty message.\n" <<
-        sendMessageChain->handle(group_reading, "") << "\n\n";
+        sendMessageChain->handle(empty_msg_cmd) << "\n\n";
+
     std::cout << "Sending short message:\n" <<
-        sendMessageChain->handle(group_cooking, "Hi there! in cooking group") << "\n\n";
+        sendMessageChain->handle(short_msg_cmd) << "\n\n";
+
+    std::cout << "Sending message to cooking group:\n" <<
+        sendMessageChain->handle(msg_cooking_cmd) << "\n\n";
+
     std::cout << "Sending message to gardening group:\n" <<
-        sendMessageChain->handle(group_gardening, "Hello everyone! in gardening group") << "\n\n";
+        sendMessageChain->handle(msg_gardening_cmd) << "\n\n";
 
     delete user_Jack;
     delete user_Jill;
@@ -145,6 +181,11 @@ int main (int argc, char *argv[]) {
     delete group_gardening;
     delete group_reading;
     delete sendMessageChain;
+
+    delete empty_msg_cmd;
+    delete short_msg_cmd;
+    delete msg_cooking_cmd;
+    delete msg_gardening_cmd;
 
     return 0;
 }
